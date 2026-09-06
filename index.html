@@ -48,6 +48,7 @@
 
     <!-- 📊 لوحة التحكم والإحصائيات الجانبية القابلة للطي (الجهة اليمنى) -->
     <div id="right-panel" class="dashboard-panel">
+        <!-- الحاوية الداخلية لحساب الـ Scroll دون حجب السهم -->
         <div class="panel-inner">
             <h2>لوحة تقييم مخاطر المخيمات</h2>
             <p style="font-size: 11px; color: #718096; margin-top: -5px; text-align: center;">وزارة الطوارئ والكوارث السورية</p>
@@ -72,9 +73,48 @@
                 </p>
             </div>
 
+            <!-- أزرار التصفية والتحديد المتعدد الكلاسيكية (محدثة بالكامل كالصورة تماماً 🎛️) [1.1.1, 1.1.7] -->
+            <div class="layer-control">
+                <h3>الفلاتر النشطة (Filters):</h3>
+                
+                <!-- 1. صندوق فلترة المحافظات المطور -->
+                <div class="filter-section">
+                    <div class="filter-section-header">المحافظة السورية</div>
+                    <div class="filter-section-content">
+                        <div class="search-input-container">
+                            <input type="text" id="gov-search" class="search-input" placeholder="بحث عن محافظة...">
+                        </div>
+                        <ul id="gov-list" class="checklist-container">
+                            <!-- سيتم توليد مربعات الاختيار للمحافظات تلقائياً من الملف الجغرافي جافا سكريبت لمنع الأخطاء! -->
+                        </ul>
+                        <div class="filter-actions">
+                            <button id="gov-reset" class="filter-btn-reset">Reset</button>
+                            <button id="gov-select-all" class="filter-btn-all">Select all</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. صندوق فلترة مستويات الخطورة المطور -->
+                <div class="filter-section" style="margin-top: 12px;">
+                    <div class="filter-section-header">مستوى الخطورة / الضعف</div>
+                    <div class="filter-section-content">
+                        <div class="search-input-container">
+                            <input type="text" id="cat-search" class="search-input" placeholder="بحث عن مستوى خطورة...">
+                        </div>
+                        <ul id="cat-list" class="checklist-container">
+                            <!-- سيتم توليد مستويات الخطورة كربعات اختيار تلقائياً برمجياً -->
+                        </ul>
+                        <div class="filter-actions">
+                            <button id="cat-reset" class="filter-btn-reset">Reset</button>
+                            <button id="cat-select-all" class="filter-btn-all">Select all</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- أزرار التحكم بإظهار وإخفاء الطبقات -->
             <div class="layer-control">
-                <h3>طبقات الخريطة:</h3>
+                <h3>طبقات الخريطة الجغرافية:</h3>
                 <label class="toggle-item">
                     <input type="checkbox" id="toggle-camps" checked>
                     <span class="indicator camps-ind"></span> مواقع مخيمات النازحين (OSM)
