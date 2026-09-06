@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محاكاة مخاطر فيضانات مخيمات النازحين - سوريا 2026</title>
+    
+    <!-- استدعاء ملف التنسيق الرسمي لـ ArcGIS Maps SDK -->
+    <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css">
+    <!-- ربط ملف التنسيق الخاص بك -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- 🚨 نافذة التعريف والترحيب بالمنصة العربية المعتمدة لمشروع المخيمات والفيضانات لعام 2026 [1] -->
+    <div id="intro-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Syria IDP Camps Flood Vulnerability Assessment 2026</h2>
+                <span class="close-btn" id="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>يرحب بكم قسم تحليل المخاطر في وزارة الطوارئ والكوارث السورية. تقدم هذه المنصة التفاعلية دراسة جغرافية استراتيجية لتقييم مدى هشاشة وتأثر مخيمات النازحين (IDP Camps) لمخاطر السيول والفيضانات على طول مجاري المياه في الجمهورية العربية السورية لعام 2026 [1].</p>
+                
+                <p><strong>الهدف من المنصة (Objective):</strong> دمج قواعد البيانات الميدانية لمخيمات النازحين المعرضة للسيول مع خطوط تجمعات شبكات المياه والحدود الإدارية، لمساعدة الوزارة وصناع القرار والمنظمات الإنسانية على تخطيط التدخلات السريعة، وتحديد الأولويات لإخلاء المخيمات أو تدعيمها جغرافياً قبل حدوث الكوارث.</p>
+                
+                <p><strong>البيانات والمصادر المستخدمة في المنصة (Data Sources):</strong></p>
+                <ul>
+                    <li><strong>قاعدة بيانات المخيمات المعرضة للفيضان 2026:</strong> ملف البيانات التفصيلي الشامل للمخيمات المهددة جغرافياً بمقاييس الكوارث مع تعداد سكانها وإحداثياتها الدقيقة.</li>
+                    <li><strong>شبكة مجاري المياه والسيول (Waterways):</strong> لتحديد ممرات الجريان المائي الطبيعي وتجمعات السيول القريبة من أماكن المخيمات لتوضيح تداخل الخطر.</li>
+                    <li><strong>الحدود الإدارية الرسمية (Admin 1):</strong> الحدود الرسمية المعتمدة للمحافظات السورية لتحديد نطاقات المسؤولية الطارئة لفرق الدفاع المدني والإغاثة.</li>
+                </ul>
+                
+                <p style="font-size: 11px; color: #a0aec0; border-top: 1px dashed #edf2f7; padding-top: 8px; margin-bottom: 0;">
+                    <strong>تنبيه إنساني فني:</strong> تهدف النمذجة المتاحة في هذه المنصة لتوفير مؤشرات تخطيطية استباقية سريعة، ويجب ربطها دائماً ببيانات الأرصاد الجوية اللحظية والتحذيرات الميدانية المباشرة.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <label class="hide-startup-label">
+                    <input type="checkbox" id="hide-on-startup"> عدم إظهار هذه الرسالة مجدداً عند التشغيل
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- ❯ زر السهم الذكي العائم والمستقل تماماً في الـ HTML -->
+    <button id="panel-toggle" class="floating-toggle-btn">❯</button>
+
+    <!-- 📊 لوحة التحكم والإحصائيات الجانبية القابلة للطي (الجهة اليمنى) -->
+    <div id="right-panel" class="dashboard-panel">
+        <div class="panel-inner">
+            <h2>لوحة تقييم مخاطر المخيمات</h2>
+            <p style="font-size: 11px; color: #718096; margin-top: -5px; text-align: center;">وزارة الطوارئ والكوارث السورية</p>
+            
+            <!-- صندوق الإحصائيات التفاعلي المطور على شكل جدول ذكي -->
+            <div class="stats-box">
+                <h3>إحصائيات خطورة المخيمات (2026):</h3>
+                <table class="stats-table">
+                    <thead>
+                        <tr>
+                            <th>تصنيف الخطورة</th>
+                            <th>المخيمات</th>
+                            <th>عدد النازحين</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stats-table-body">
+                        <tr><td colspan="3" style="text-align: center; color: #a0aec0;">بانتظار تحميل البيانات...</td></tr>
+                    </tbody>
+                </table>
+                <p style="font-size: 10px; color: #7f1d1d; line-height: 1.4; text-align: center; font-weight: bold; margin-top: 10px; margin-bottom: 0;">
+                    ⚠️ البيانات تحسب تلقائياً من الملف الميداني لعام 2026.
+                </p>
+            </div>
+
+            <!-- أزرار التحكم بإظهار وإخفاء الطبقات -->
+            <div class="layer-control">
+                <h3>طبقات الخريطة:</h3>
+                <label class="toggle-item">
+                    <input type="checkbox" id="toggle-camps" checked>
+                    <span class="indicator camps-ind"></span> مواقع مخيمات النازحين (OSM)
+                </label>
+                <label class="toggle-item">
+                    <input type="checkbox" id="toggle-water" checked>
+                    <span class="indicator water-ind"></span> ممرات ومجاري المياه (Waterways)
+                </label>
+                <label class="toggle-item">
+                    <input type="checkbox" id="toggle-admin1">
+                    <span class="indicator admin1-ind"></span> حدود المحافظات (Admin 1)
+                </label>
+                <!-- خيار تفعيل طبقة كثافة الأضرار الـ TIF الجديدة 🏥 -->
+                <label class="toggle-item">
+                    <input type="checkbox" id="toggle-damage">
+                    <span class="indicator damage-ind"></span> كثافة مؤشر الأضرار (TIF)
+                </label>
+            </div>
+
+            <!-- أدوات القياس والتحليل الجغرافي [1] -->
+            <div class="layer-control">
+                <h3>أدوات القياس والتحليل الجغرافي:</h3>
+                <div class="measure-buttons-container">
+                    <button id="measure-distance-btn" class="measure-btn">📐 قياس المسافة</button>
+                    <button id="measure-area-btn" class="measure-btn">🗺️ قياس المساحة</button>
+                </div>
+                <!-- زر التقاط الإحداثيات الـ GPS الأخضر المطور 📍 -->
+                <button id="get-coordinates-btn" class="measure-btn-green">📍 معرفة الإحداثيات</button>
+                <button id="clear-measure-btn" class="measure-clear-btn" style="margin-top: 8px;">❌ مسح جميع الأدوات</button>
+                <p class="measure-tip">💡 للتحرك في الخريطة أثناء الرسم, اضغط على زر الماوس الأيمن واسحب الخريطة [1].</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- حاوي خريطة ArcGIS الرسمي -->
+    <div id="viewDiv"></div>
+
+    <!-- استدعاء ملف البرمجة الرسمي لـ ArcGIS Maps SDK من خوادم Esri -->
+    <script src="https://js.arcgis.com/4.30/"></script>
+    <!-- ربط كود الجافا سكريبت الخاص بك -->
+    <script src="main.js"></script>
+</body>
+</html>
