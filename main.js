@@ -11,7 +11,7 @@ require([
 ], function(esriConfig, Map, MapView, GeoJSONLayer, ImageryTileLayer, GraphicsLayer, Graphic, geometryEngine, Measurement) {
 
     // تفعيل الـ API Key الخاص بك لـ ArcGIS
-    esriConfig.apiKey = "AAPTapObbKBvMt3z4RRzSiiIIgg..jHtKbd_k8YFwoBG0XEdBYCreZGtAoJb86oD8N6PBfjJdma2DfiG2NSQ2deizhZU4JLFnEY7D4QLaKKWzqxoR83oTpIt_kooPew5nWHAbA-AsHiZvsp47wU8_Ehv3yoFwBYlufeRL2PNGtAoJb86oD8N6PBfjJdma2DfiG2NSQ2deizhZU4JLFnEY7D4QLaKKWzqxoR83oTpIt_kooPew5nWHAbA-AsHiZvsp47wU8_Ehv3yoFwBYlufeRL2PYj8H-eigWhbmfkD8zuS65ySZEel1o1jKvcxqtHRBNuLPpgepkNblRndc6VvXy2naXd9ABEUc1v0nA4tbRXliYxhZk3R-cyIC3yt6FAP9dbot5x6OXOxQk7RvkzAT1_BHP2vK56";
+    esriConfig.apiKey = "AAPTapObbKBvMt3z4RRzSiiIIgg..jHtKbd_k8YFwoBG0XEdBYCreZGtAoJb86oD8N6PBfjJdma2DfiG2NSQ2deizhZU4JLFnEY7D4QLaKKWzqxoR83oTpIt_kooPew5nWHAbA-AsHiZvsp47wU8_Ehv3yoFwBYlufeRL2PYj8H-eigWhbmfkD8zuS65ySZEel1o1jKvcxqtHRBNuLPpgepkNblRndc6VvXy2naXd9ABEUc1v0nA4tbRXliYxhZk3R-cyIC3yt6FAP9dbot5x6OXOxQk7RvkzAT1_BHP2vK56";
 
     const map = new Map({
         basemap: "osm" // خريطة الأساس الرسمية [1]
@@ -105,45 +105,69 @@ require([
             type: "simple",
             symbol: {
                 type: "simple-line",
-                color: [14, 165, 233, 0.45], // 🚨 خطوط مائية تركوازية رفيعة وناعمة جداً [1]
-                width: "0.8px" 
+                color: [14, 165, 233, 0.45], // خطوط مائية تركوازية رفيعة وناعمة جداً [1]
+                width: "0.8px" // سمك خفيف جداً
             }
         }
     });
     map.add(waterLineLayer);
 
-    // 3. تحميل مضلع الراستر وصور الأضرار (🏥 تلوين ناري تدريجي وإزالة الصندوق الأسود المظلم!) [1, 3]
+    // 3. تحميل مضلع الراستر وصور الأضرار (تلوين ذكي متوهج، مع إخفاء وتلاشي البكسلات صفرية القيمة!) [1, 3]
     try {
         damageTiffLayer = new ImageryTileLayer({
             url: "Damage Index Density.tif", 
             visible: false, 
             opacity: 0.8,
-            // 🚨 الفلتر الذكي: يمسح البكسلات صفرية القيمة تماماً، ويترك بقية القيم لتمرير التدريج اللوني! [1, 3]
+            // 🚨 الفلتر الذكي والمطور: يمسح البكسلات الخلفية صفرية القيمة تماماً، ويجعلها شفافة 100%! [1, 3]
             pixelFilter: function(pixelData) {
                 if (pixelData && pixelData.pixelBlock) {
                     const pixels = pixelData.pixelBlock.pixels[0];
                     const numPixels = pixels.length;
                     
-                    // تحضير مصفوفة الشفافية والمسح [3]
-                    const mask = pixelData.pixelBlock.mask || new Uint8Array(numPixels);
+                    // استخراج القيم الصغرى والعظمى لتدريج الألوان [3]
+                    let min = Infinity, max = -Infinity;
                     for (let i = 0; i < numPixels; i++) {
-                        if (pixels[i] <= 0.01) { // أي بكسل أسود وخلفية
-                            mask[i] = 0; // يمسح ويصبح شفافاً تماماً! [1]
+                        if (pixels[i] < min) min = pixels[i];
+                        if (pixels[i] > max) max = pixels[i];
+                    }
+                    if (max === min) max = min + 1; // تفادي القسمة على صفر
+                    
+                    // تحضير مصفوفات الألوان الفيكتورية للـ Canvas [3]
+                    const r = new Uint8Array(numPixels);
+                    const g = new Uint8Array(numPixels);
+                    const b = new Uint8Array(numPixels);
+                    const a = new Uint8Array(numPixels);
+                    
+                    for (let i = 0; i < numPixels; i++) {
+                        // تطبيع القيم من 0.0 إلى 1.0 لسهولة التدريج العشري
+                        const t = (pixels[i] - min) / (max - min); 
+                        
+                        // 🚨 بكسلات الخلايا المظلمة (الخلفية وقيمة 0) نجعل شفافيتها صفراً بالكامل لإلغاء الصندوق الأسود! [1]
+                        if (t < 0.15) {
+                            r[i] = 0;
+                            g[i] = 0;
+                            b[i] = 0;
+                            a[i] = 0; // شفافة بالكامل [1]
+                        } else if (t < 0.6) {
+                            // تدرج برتقالي ناري رائع للخطر المتوسط
+                            const factor = (t - 0.15) / 0.45;
+                            r[i] = 249; // برتقالي R
+                            g[i] = 115; // برتقالي G
+                            b[i] = 22;  // برتقالي B
+                            a[i] = Math.round(factor * 160); // زيادة الكثافة تدريجياً
                         } else {
-                            mask[i] = 1; // يظل مرئياً للمرور بالتدرج [1]
+                            // تدرج أحمر داكن لبؤر الدمار الشديد
+                            const factor = (t - 0.6) / 0.4;
+                            r[i] = Math.round(249 - factor * 29); // التدرج للوصول للأحمر 220
+                            g[i] = Math.round(115 - factor * 77); // التدرج لـ 38
+                            b[i] = Math.round(22 + factor * 16);  // التدرج لـ 38
+                            a[i] = Math.round(160 + factor * 95); // قوة الإشعاع والألوان
                         }
                     }
-                    pixelData.pixelBlock.mask = mask;
-                }
-            },
-            renderer: {
-                type: "raster-stretch",
-                stretchType: "min-max",
-                colorRamp: {
-                    type: "algorithmic",
-                    algorithm: "esriHSVAlgorithm",
-                    fromColor: [249, 115, 22, 0.6], // تدرج يبدأ من البرتقالي الناري الفاخر [1]
-                    toColor: [220, 38, 38, 0.95]     // ينتهي بالأحمر الداكن المتوهج للأضرار الشديدة [1]
+                    
+                    // إرسال البيانات الملونة والمعدلة بنجاح لخريطة ArcGIS! [3]
+                    pixelData.pixelBlock.pixels = [r, g, b, a];
+                    pixelData.pixelBlock.pixelType = "U8";
                 }
             }
         });
@@ -202,12 +226,18 @@ require([
           });
           map.add(idpSitesLayer);
           
-          // استخلاص وحفظ المعالم في الذاكرة لتحديث لوحة الإحصائيات آلياً بالقيم والسكان وتفصيل الخطورة في جدول [3]
+          // استخلاص وحفظ المعالم في الذاكرة لتتلقى عمليات تجميع البيانات [3]
           idpSitesLayer.queryFeatures().then(function(results) {
-              const features = results.features;
+              loadedPopulatedFeatures = results.features;
               
-              // 🚨 بناء جدول إحصاءات الخطورة التفاعلي ديناميكياً وعرضه بامتياز [3]
-              calculateDynamicRiskStats(features);
+              // 🚨 3. بناء وتعبئة قائمة المحافظات بمربعات صح ديناميكياً لتطابق شكل الفلترة الكلاسيكي! [1.1.7, 3]
+              populateGovernorateChecklist(loadedPopulatedFeatures);
+
+              // بناء مستويات الخطورة كمربعات صح تلقائياً
+              populateCategoryChecklist();
+
+              // بناء جدول إحصاءات الخطورة التفاعلي ديناميكياً [3]
+              calculateDynamicRiskStats(loadedPopulatedFeatures);
           });
 
           setupInteractivity();
@@ -215,6 +245,64 @@ require([
           console.error("خطأ في معالجة إحداثيات ملف المخيمات أو قراءته:", err);
           setupInteractivity();
       });
+
+    // 🗺️ دالة بناء خيارات المحافظات كمربعات اختيار (Checkboxes) ديناميكياً [3]
+    function populateGovernorateChecklist(features) {
+        const govListContainer = document.getElementById("gov-list");
+        const uniqueGovs = [];
+
+        features.forEach(f => {
+            const gov = f.attributes.Governorate;
+            if (gov && !uniqueGovs.includes(gov)) {
+                uniqueGovs.push(gov);
+            }
+        });
+
+        uniqueGovs.sort();
+
+        govListContainer.innerHTML = ""; // تصفية النص المؤقت
+
+        uniqueGovs.forEach(gov => {
+            const li = document.createElement("li");
+            // تفعيلهم بالـ checked تلقائياً لتبدأ الخريطة بعرض كل شيء [1.1.1]
+            li.innerHTML = `
+                <label>
+                    <input type="checkbox" class="gov-checkbox" value="${gov}" checked>
+                    <span>${gov}</span>
+                </label>
+            `;
+            govListContainer.appendChild(li);
+        });
+
+        // ربط حدث التغيير تفاعلياً بمجرد إنشاء المربعات البرمجية
+        document.querySelectorAll(".gov-checkbox").forEach(cb => {
+            cb.addEventListener("change", applyCrossFilters);
+        });
+    }
+
+    // 🗺️ دالة بناء خيارات مستويات الخطورة كمربعات اختيار (Checkboxes) ديناميكياً
+    function populateCategoryChecklist() {
+        const catListContainer = document.getElementById("cat-list");
+        const categories = ["Catastrophic", "Extreme", "Severe", "Moderate", "Low"];
+
+        catListContainer.innerHTML = "";
+
+        categories.forEach(cat => {
+            const li = document.createElement("li");
+            li.innerHTML = `
+                <label>
+                    <input type="checkbox" class="cat-checkbox" value="${cat}" checked>
+                    <span>${cat}</span>
+                </label>
+            `;
+            catListContainer.appendChild(li);
+        });
+
+        // ربط حدث التغيير تفاعلياً
+        document.querySelectorAll(".cat-checkbox").forEach(cb => {
+            cb.addEventListener("change", applyCrossFilters);
+        });
+    }
 
     // 📊 دالة الحساب الجغرافي وبناء جدول الخطورة والسكان تفاعلياً [3]
     function calculateDynamicRiskStats(features) {
@@ -231,7 +319,6 @@ require([
             let cat = props.Category || "Low"; // التصنيف
             let pop = parseInt(props.Total_IDPs) || 0; // السكان
 
-            // توحيد حالة الحروف لمطابقة الفلترة
             if (cat.toLowerCase() === "catastrophic") cat = "Catastrophic";
             if (cat.toLowerCase() === "extreme") cat = "Extreme";
             if (cat.toLowerCase() === "severe" || cat.toLowerCase() === "high") cat = "Severe";
@@ -244,9 +331,8 @@ require([
             }
         });
 
-        // بناء صفوف الجدول برمجياً وإضافتها لـ HTML
         const tableBody = document.getElementById('stats-table-body');
-        tableBody.innerHTML = ""; // تصفية النص المؤقت
+        tableBody.innerHTML = ""; 
 
         for (let key in stats) {
             const row = document.createElement('tr');
@@ -257,6 +343,53 @@ require([
             `;
             tableBody.appendChild(row);
         }
+    }
+
+    // 🎛️ دالة تطبيق الفلترة المتقاطعة للخيارات المتعددة بالـ Checkboxes وجاذبية الكاميرا GoTo [1.1.1, 3]
+    function applyCrossFilters() {
+        // جمع كل القيم المفعلة من مربعات صح المحافظات والخطورة [1.1.1, 3]
+        const checkedGovs = Array.from(document.querySelectorAll(".gov-checkbox:checked")).map(cb => cb.value);
+        const checkedCats = Array.from(document.querySelectorAll(".cat-checkbox:checked")).map(cb => cb.value);
+
+        // 1. بناء التعبير الجغرافي الـ SQL المتقاطع بمرونة فائقة للمتعدد [1.1.1, 3]
+        let sql = [];
+        
+        if (checkedGovs.length > 0) {
+            const formattedGovs = checkedGovs.map(g => `'${g}'`).join(",");
+            sql.push(`Governorate IN (${formattedGovs})`);
+        } else {
+            sql.push("1=0"); // إذا تم إلغاء كل المحافظات، لا يعرض شيئاً
+        }
+        
+        if (checkedCats.length > 0) {
+            const formattedCats = checkedCats.map(c => `'${c}'`).join(",");
+            sql.push(`Category IN (${formattedCats})`);
+        } else {
+            sql.push("1=0"); // إذا تم إلغاء الخطورة بالكامل، لا يعرض شيئاً
+        }
+
+        const finalExpr = sql.length > 0 ? sql.join(" AND ") : null;
+        idpSitesLayer.definitionExpression = finalExpr; // تصفية الخريطة فوراً [3]
+
+        // 2. تحديث جدول الإحصائيات حياً للمخيمات المعروضة فقط [3]
+        const filteredFeatures = loadedPopulatedFeatures.filter(f => {
+            const featureGov = f.attributes.Governorate;
+            const featureCat = f.attributes.Category ? f.attributes.Category.toLowerCase() : "";
+            
+            const matchGov = checkedGovs.includes(featureGov);
+            const matchCat = checkedCats.some(c => c.toLowerCase() === featureCat);
+            
+            return matchGov && matchCat;
+        });
+        calculateDynamicRiskStats(filteredFeatures);
+
+        // 3. 🚨 التحليق والتركيز الجغرافي التلقائي (الزووم الذكي "takes us to it" كاميرا الـ GoTo) [1]
+        idpSitesLayer.queryExtent().then(function(response) {
+            // شرط الحماية الفنية: الكاميرا لن تطير أو تتحرك أبداً إذا لم يكن هناك نتائج بالفلترة! [1]
+            if (response.extent && response.count > 0) {
+                view.goTo(response.extent.expand(1.25), { duration: 1000 }); 
+            }
+        });
     }
 
     // دالة إيقاف وإلغاء أداة التقاط الإحداثيات الـ GPS لتفادي التداخل البرمجي
@@ -343,6 +476,54 @@ require([
             deactivateCoordTool(); // إيقاف أداة الإحداثيات [1]
             measurementWidget.clear(); // مسح خطوط القياس والمساحة [1]
             view.closePopup(); // إغلاق أي منبثقة مفتوحة
+        });
+
+        // 🚨 ربط أزرار الـ Select All و الـ Reset للمحافظات تفاعلياً بطلبك الجديد! [1.1.3, 3]
+        document.getElementById("gov-select-all").addEventListener("click", function() {
+            document.querySelectorAll(".gov-checkbox").forEach(cb => cb.checked = true);
+            applyCrossFilters();
+        });
+
+        document.getElementById("gov-reset").addEventListener("click", function() {
+            document.querySelectorAll(".gov-checkbox").forEach(cb => cb.checked = false);
+            applyCrossFilters();
+        });
+
+        // 🚨 ربط أزرار الـ Select All و الـ Reset لمستويات الخطورة تفاعلياً بطلبك الجديد! [1.1.3, 3]
+        document.getElementById("cat-select-all").addEventListener("click", function() {
+            document.querySelectorAll(".cat-checkbox").forEach(cb => cb.checked = true);
+            applyCrossFilters();
+        });
+
+        document.getElementById("cat-reset").addEventListener("click", function() {
+            document.querySelectorAll(".cat-checkbox").forEach(cb => cb.checked = false);
+            applyCrossFilters();
+        });
+
+        // 🚨 تفعيل البحث الفوري المباشر للمحافظات جغرافياً! (بمجرد الكتابة يتم تصفية الأسماء تفاعلياً) [3]
+        document.getElementById("gov-search").addEventListener("input", function(e) {
+            const searchText = e.target.value.toLowerCase();
+            document.querySelectorAll("#gov-list li").forEach(li => {
+                const text = li.textContent.toLowerCase();
+                if (text.includes(searchText)) {
+                    li.style.display = ""; // تظهره إذا طابق البحث
+                } else {
+                    li.style.display = "none"; // تخفيه إذا لم يطابق
+                }
+            });
+        });
+
+        // 🚨 تفعيل البحث الفوري لمستويات الخطورة! [3]
+        document.getElementById("cat-search").addEventListener("input", function(e) {
+            const searchText = e.target.value.toLowerCase();
+            document.querySelectorAll("#cat-list li").forEach(li => {
+                const text = li.textContent.toLowerCase();
+                if (text.includes(searchText)) {
+                    li.style.display = "";
+                } else {
+                    li.style.display = "none";
+                }
+            });
         });
     }
 
