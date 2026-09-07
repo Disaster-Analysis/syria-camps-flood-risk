@@ -3,12 +3,11 @@ require([
   "esri/Map",
   "esri/views/MapView",
   "esri/layers/GeoJSONLayer",
-  "esri/layers/ImageryTileLayer", // استدعاء وحدة قراءة الـ GeoTIFF [1]
   "esri/layers/GraphicsLayer", 
-  "esri/Graphic", 
-  "esri/geometry/geometryEngine", 
-  "esri/widgets/Measurement" // أداة القياس الجغرافي [1]
-], function(esriConfig, Map, MapView, GeoJSONLayer, ImageryTileLayer, GraphicsLayer, Graphic, geometryEngine, Measurement) {
+  "esri/Graphic", // تم تفعيلها واستدعاؤها بنجاح [2, 3]
+  "esri/geometry/geometryEngine", // محرك الهندسة الجغرافية لحساب التقاطعات [3]
+  "esri/widgets/Measurement" // استدعاء أداة القياس الجغرافي [1]
+], function(esriConfig, Map, MapView, GeoJSONLayer, GraphicsLayer, Graphic, geometryEngine, Measurement) {
 
     // تفعيل الـ API Key الخاص بك لـ ArcGIS
     esriConfig.apiKey = "AAPTapObbKBvMt3z4RRzSiiIIgg..jHtKbd_k8YFwoBG0XEdBYCreZGtAoJb86oD8N6PBfjJdma2DfiG2NSQ2deizhZU4JLFnEY7D4QLaKKWzqxoR83oTpIt_kooPew5nWHAbA-AsHiZvsp47wU8_Ehv3yoFwBYlufeRL2PYj8H-eigWhbmfkD8zuS65ySZEel1o1jKvcxqtHRBNuLPpgepkNblRndc6VvXy2naXd9ABEUc1v0nA4tbRXliYxhZk3R-cyIC3yt6FAP9dbot5x6OXOxQk7RvkzAT1_BHP2vK56";
@@ -54,6 +53,10 @@ require([
     let isCoordToolActive = false;
     let clickListenerHandle = null;
 
+    // إنشاء طبقة رسومات خاصة لعرض القرى المتضررة باللون الأحمر وتسهيل النقر عليها [3]
+    const floodedPlacesGraphicsLayer = new GraphicsLayer();
+    map.add(floodedPlacesGraphicsLayer);
+
     // قوالب الـ Popups المخصصة والذكية للمخيمات بناءً على هيكلية الملف الجديد [3]
     const admin1PopupTemplate = {
         title: "تفاصيل المحافظة: {adm1_name1} ({adm1_name})",
@@ -71,7 +74,8 @@ require([
         content: `
             <table class="esri-widget__table" style="width: 100%; border-collapse: collapse; font-family: Segoe UI, sans-serif; font-size: 13px;">
                 <tr style="background-color: #f7fafc;"><td style="padding: 8px; font-weight: bold; width: 45%;">تعداد النازحين بالموقع:</td><td style="padding: 8px; font-weight: bold; color: #1a365d;">{Total_IDPs} نسمة</td></tr>
-                <tr><td style="padding: 8px; font-weight: bold;">مستوى الخطورة / الضعف:</td><td style="padding: 8px; font-weight: bold; color: #dc2626;">{Category}</td></tr>
+                <!-- عرض فئة الخطورة الأصلية (مثل Stress) باللون الأحمر العريض دون أي تشويه أو تعديل! [3] -->
+                <tr><td style="padding: 8px; font-weight: bold;">مستوى الخطورة / الضعف:</td><td style="padding: 8px; font-weight: bold; color: #dc2626;">{RawCategory}</td></tr>
                 <tr style="background-color: #edf2f7;"><td style="padding: 8px; font-weight: bold;">نوع الموقع:</td><td style="padding: 8px;">{Site_type}</td></tr>
                 <tr><td style="padding: 8px; font-weight: bold;">المنطقة والمحافظة:</td><td style="padding: 8px;">{District} - {Governorate}</td></tr>
                 <tr style="background-color: #f7fafc;"><td style="padding: 8px; font-weight: bold;">البلدية والناحية:</td><td style="padding: 8px;">{Community} - {Subdistrict}</td></tr>
@@ -118,7 +122,7 @@ require([
             url: "Damage Index Density.tif", 
             visible: false, 
             opacity: 0.8,
-            // 🚨 الفلتر الذكي والمطور: يمسح البكسلات الخلفية صفرية القيمة تماماً، ويجعلها شفافة 100%! [1, 3]
+            // الفلتر المطور: يمسح البكسلات الخلفية صفرية القيمة تماماً (a=0)، ويترك البؤر بألوان متدرجة نارية! [1, 3]
             pixelFilter: function(pixelData) {
                 if (pixelData && pixelData.pixelBlock) {
                     const pixels = pixelData.pixelBlock.pixels[0];
@@ -142,7 +146,7 @@ require([
                         // تطبيع القيم من 0.0 إلى 1.0 لسهولة التدريج العشري
                         const t = (pixels[i] - min) / (max - min); 
                         
-                        // 🚨 بكسلات الخلايا المظلمة (الخلفية وقيمة 0) نجعل شفافيتها صفراً بالكامل لإلغاء الصندوق الأسود! [1]
+                        // بكسلات الخلايا المظلمة (الخلفية وقيمة 0) نجعل شفافيتها صفراً بالكامل لإلغاء الصندوق الأسود! [1]
                         if (t < 0.15) {
                             r[i] = 0;
                             g[i] = 0;
@@ -169,6 +173,16 @@ require([
                     pixelData.pixelBlock.pixels = [r, g, b, a];
                     pixelData.pixelBlock.pixelType = "U8";
                 }
+            },
+            renderer: {
+                type: "raster-stretch",
+                stretchType: "min-max",
+                colorRamp: {
+                    type: "algorithmic",
+                    algorithm: "esriHSVAlgorithm",
+                    fromColor: [249, 115, 22, 0.6], // تدرج يبدأ من البرتقالي الناري الفاخر [1]
+                    toColor: [220, 38, 38, 0.95]     // ينتهي بالأحمر الداكن المتوهج للأضرار الشديدة [1]
+                }
             }
         });
         map.add(damageTiffLayer);
@@ -177,23 +191,47 @@ require([
         console.warn("عطل في قراءة ملف الـ TIF:", e);
     }
 
-    // 4. قراءة ملف مخيمات النازحين (🏥 حل تداخل الإحداثيات المتعارضة UTM، والتلوين التفاعلي للمثلثات الكلاسيكية!) [3]
+    // 4. قراءة ملف مخيمات النازحين (🏥 حل تداخل الإحداثيات المتعارضة UTM، وتوحيد الـ Stress تحت الـ Moderate) [3]
     fetch("IDP Sites.geojson")
       .then(res => res.json())
       .then(data => {
-          // 🚨 1. مسح الـ CRS المتعارض لكي تتقبل خريطة ArcGIS الملف فوراً! [1, 3]
+          // مسح الـ CRS المتعارض لكي تتقبل خريطة ArcGIS الملف فوراً! [1, 3]
           delete data.crs; 
 
-          // 🚨 2. استبدال الإحداثيات المترية الخاطئة بإحداثيات الـ WGS84 المخزنة بداخل خصائص ملفك! [3]
+          // 🚨 محرك توحيد وتطهير البيانات المطور لدمج الـ Stress تحت الـ Moderate جغرافياً وإبقاء الكلمة الأصلية في الـ Popup! [3]
           data.features.forEach(f => {
+              // أ: استبدال الإحداثيات المترية الخاطئة بإحداثيات الـ WGS84 السليمة [3]
               if (f.properties && f.properties.Longitude && f.properties.Latitude) {
                   f.geometry.coordinates = [
                       parseFloat(f.properties.Longitude),
                       parseFloat(f.properties.Latitude)
                   ];
               }
+
+              // ب: توحيد فئات الخطر ودمج الـ Stress مع الـ Moderate [3]
+              if (f.properties && f.properties.Category) {
+                  // حفظ القيمة الأصلية لعرضها في الـ Popup دون تشويه! [3]
+                  f.properties.RawCategory = f.properties.Category;
+
+                  const rawCat = f.properties.Category.toLowerCase();
+                  if (rawCat.includes("none") || rawCat.includes("minimal") || rawCat.includes("low") || rawCat.includes("minor")) {
+                      f.properties.Category = "Low"; 
+                  } else if (rawCat.includes("stress") || rawCat.includes("moderate") || rawCat.includes("warning")) {
+                      f.properties.Category = "Moderate"; // توحيد الـ Stress والـ Moderate جغرافياً وإحصائياً! [3]
+                  } else if (rawCat.includes("catastrophic")) {
+                      f.properties.Category = "Catastrophic";
+                  } else if (rawCat.includes("extreme")) {
+                      f.properties.Category = "Extreme";
+                  } else if (rawCat.includes("severe") || rawCat.includes("high") || rawCat.includes("crisis")) {
+                      f.properties.Category = "Severe";
+                  }
+              }
           });
           
+          // حفظ المعالم المطهرة في الذاكرة محلياً وفوراً لتفادي ثغرة التزامن الصفرية [3]
+          loadedPopulatedFeatures = data.features; 
+          console.log("تم تحميل وتطهير التجمعات السكانية في الذاكرة: " + loadedPopulatedFeatures.length);
+
           // تحويل الـ JSON المعدل إلى Blob URL ليتم قراءته بسلاسة في خريطة ArcGIS [3]
           const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
           const blobUrl = URL.createObjectURL(blob);
@@ -208,29 +246,28 @@ require([
                   field: "Category", // الفلترة الملونة حسب مستوى الكارثة والخطورة [3]
                   defaultSymbol: {
                       type: "simple-marker",
-                      style: "triangle", // مضلع مثلثي يحاكي شكل الخيمة الإغاثية بدقة بطلبك الفني الممتاز! [4]
-                      color: [245, 158, 11, 0.85], // برتقالي افتراضي
-                      size: "8px",
+                      style: "triangle", // مضلع مثلثي للخيام [4]
+                      color: [148, 163, 184, 0.8], // رمادي ناعم لأي قيمة مجهولة غير المعرفة
+                      size: "7px",
                       outline: { color: [255, 255, 255, 0.9], width: 1 }
                   },
                   uniqueValueInfos: [
-                      // تلوين وتكبير المثلثات حسب مستوى الخطورة الإنسانية [3, 4]
+                      // تلوين وتكبير المثلثات حسب مستوى الخطورة [3, 4]
                       { value: "Catastrophic", symbol: { type: "simple-marker", style: "triangle", color: [153, 27, 27, 0.95], size: "15px", outline: { color: [255, 255, 255, 1], width: 1.5 } } },
-                      { value: "catastrophic", symbol: { type: "simple-marker", style: "triangle", color: [153, 27, 27, 0.95], size: "15px", outline: { color: [255, 255, 255, 1], width: 1.5 } } },
                       { value: "Extreme", symbol: { type: "simple-marker", style: "triangle", color: [220, 38, 38, 0.95], size: "12px", outline: { color: [255, 255, 255, 1], width: 1.2 } } },
-                      { value: "extreme", symbol: { type: "simple-marker", style: "triangle", color: [220, 38, 38, 0.95], size: "12px", outline: { color: [255, 255, 255, 1], width: 1.2 } } },
                       { value: "Severe", symbol: { type: "simple-marker", style: "triangle", color: [234, 88, 12, 0.9], size: "10px", outline: { color: [255, 255, 255, 1], width: 1 } } },
-                      { value: "severe", symbol: { type: "simple-marker", style: "triangle", color: [234, 88, 12, 0.9], size: "10px", outline: { color: [255, 255, 255, 1], width: 1 } } }
+                      { value: "Moderate", symbol: { type: "simple-marker", style: "triangle", color: [245, 158, 11, 0.85], size: "8px", outline: { color: [255, 255, 255, 0.9], width: 1 } } }, // الـ Stress يعرض هنا الآن برتقالياً بامتياز! [3, 4]
+                      { value: "Low", symbol: { type: "simple-marker", style: "triangle", color: [234, 179, 8, 0.8], size: "7px", outline: { color: [255, 255, 255, 0.8], width: 1 } } }
                   ]
               }
           });
           map.add(idpSitesLayer);
           
-          // استخلاص وحفظ المعالم في الذاكرة لتتلقى عمليات تجميع البيانات [3]
+          // استخلاص وحفظ المعالم في الذاكرة لتحديث لوحة الإحصائيات آلياً بالقيم والسكان وتفصيل الخطورة في جدول [3]
           idpSitesLayer.queryFeatures().then(function(results) {
-              loadedPopulatedFeatures = results.features;
+              const features = results.features;
               
-              // 🚨 3. بناء وتعبئة قائمة المحافظات بمربعات صح ديناميكياً لتطابق شكل الفلترة الكلاسيكي! [1.1.7, 3]
+              // 🚨 بناء وتعبئة قائمة المحافظات بمربعات صح ديناميكياً لتطابق شكل الفلترة الكلاسيكي! [1.1.7, 3]
               populateGovernorateChecklist(loadedPopulatedFeatures);
 
               // بناء مستويات الخطورة كمربعات صح تلقائياً
@@ -252,7 +289,8 @@ require([
         const uniqueGovs = [];
 
         features.forEach(f => {
-            const gov = f.attributes.Governorate;
+            const props = f.properties || f.attributes; // يدعم القراءة المباشرة من الـ JSON [3]
+            const gov = props.Governorate;
             if (gov && !uniqueGovs.includes(gov)) {
                 uniqueGovs.push(gov);
             }
@@ -264,7 +302,6 @@ require([
 
         uniqueGovs.forEach(gov => {
             const li = document.createElement("li");
-            // تفعيلهم بالـ checked تلقائياً لتبدأ الخريطة بعرض كل شيء [1.1.1]
             li.innerHTML = `
                 <label>
                     <input type="checkbox" class="gov-checkbox" value="${gov}" checked>
@@ -280,10 +317,16 @@ require([
         });
     }
 
-    // 🗺️ دالة بناء خيارات مستويات الخطورة كمربعات اختيار (Checkboxes) ديناميكياً
+    // ⛺ 🗺️ دالة بناء خيارات مستويات الخطورة بمربعات اختيار تفاعلية تحتوي على أيقوناتها المثلثة الملونة [3, 4]
     function populateCategoryChecklist() {
         const catListContainer = document.getElementById("cat-list");
-        const categories = ["Catastrophic", "Extreme", "Severe", "Moderate", "Low"];
+        const categories = [
+            { value: "Catastrophic", label: "Catastrophic", class: "cat-ind-catastrophic" },
+            { value: "Extreme", label: "Extreme", class: "cat-ind-extreme" },
+            { value: "Severe", label: "Severe", class: "cat-ind-severe" },
+            { value: "Moderate", label: "Moderate (Stress)", class: "cat-ind-moderate" }, // توحيد المسمى في القائمة بوضوح!
+            { value: "Low", label: "Low (None / Minimal)", class: "cat-ind-low" } 
+        ];
 
         catListContainer.innerHTML = "";
 
@@ -291,8 +334,9 @@ require([
             const li = document.createElement("li");
             li.innerHTML = `
                 <label>
-                    <input type="checkbox" class="cat-checkbox" value="${cat}" checked>
-                    <span>${cat}</span>
+                    <input type="checkbox" class="cat-checkbox" value="${cat.value}" checked>
+                    <span class="cat-indicator ${cat.class}"></span> <!-- أيقونة الخيمة الملونة المطابقة! [4] -->
+                    <span>${cat.label}</span>
                 </label>
             `;
             catListContainer.appendChild(li);
@@ -310,20 +354,23 @@ require([
             "Catastrophic": { count: 0, pop: 0, label: "كارثية (Catastrophic)", class: "risk-catastrophic" },
             "Extreme": { count: 0, pop: 0, label: "قصوى (Extreme)", class: "risk-extreme" },
             "Severe": { count: 0, pop: 0, label: "شديدة (Severe)", class: "risk-severe" },
-            "Moderate": { count: 0, pop: 0, label: "متوسطة (Moderate)", class: "risk-moderate" },
-            "Low": { count: 0, pop: 0, label: "منخفضة (Low)", class: "risk-low" }
+            "Moderate": { count: 0, pop: 0, label: "متوسطة (Moderate / Stress)", class: "risk-moderate" }, // توحيد الإحصاء
+            "Low": { count: 0, pop: 0, label: "منخفضة (Low / Minimal)", class: "risk-low" } 
         };
 
         features.forEach(f => {
-            const props = f.attributes;
+            const props = f.attributes || f.properties; // يدعم كلاهما بكفاءة [3]
+            if (!props) return;
             let cat = props.Category || "Low"; // التصنيف
-            let pop = parseInt(props.Total_IDPs) || 0; // السكان
 
+            // توحيد الحالات تفاعلياً
             if (cat.toLowerCase() === "catastrophic") cat = "Catastrophic";
             if (cat.toLowerCase() === "extreme") cat = "Extreme";
             if (cat.toLowerCase() === "severe" || cat.toLowerCase() === "high") cat = "Severe";
             if (cat.toLowerCase() === "moderate") cat = "Moderate";
             if (cat.toLowerCase() === "low" || cat.toLowerCase() === "minor") cat = "Low";
+
+            let pop = parseInt(props.Total_IDPs) || 0; // السكان
 
             if (stats[cat]) {
                 stats[cat].count++;
@@ -351,21 +398,30 @@ require([
         const checkedGovs = Array.from(document.querySelectorAll(".gov-checkbox:checked")).map(cb => cb.value);
         const checkedCats = Array.from(document.querySelectorAll(".cat-checkbox:checked")).map(cb => cb.value);
 
-        // 1. بناء التعبير الجغرافي الـ SQL المتقاطع بمرونة فائقة للمتعدد [1.1.1, 3]
+        // 🚨 حماية هندسية: إذا تم إلغاء كل المربعات بالكامل، نقفل الشاشة جغرافياً تفادياً للانهيار [3]
+        if (checkedGovs.length === 0 || checkedCats.length === 0) {
+            idpSitesLayer.definitionExpression = "OBJECTID = -1"; // إخفاء كل المعالم بأمان
+            calculateDynamicRiskStats([]); // تصفية الجدول
+            return;
+        }
+
+        // 🚨 بناء التعبير الجغرافي الـ SQL المتقاطع باستخدام الـ OR بدلاً من الـ IN لضمان هروب وحل الفاصلة العليا لـ "Dar'a"! [1, 3]
         let sql = [];
         
-        if (checkedGovs.length > 0) {
-            const formattedGovs = checkedGovs.map(g => `'${g}'`).join(",");
-            sql.push(`Governorate IN (${formattedGovs})`);
-        } else {
-            sql.push("1=0"); // إذا تم إلغاء كل المحافظات، لا يعرض شيئاً
+        if (checkedGovs.length < document.querySelectorAll(".gov-checkbox").length) {
+            const govConditions = checkedGovs.map(g => {
+                const escaped = g.replace(/'/g, "''"); // دبل الفاصلة المفردة لضمان أمان الـ SQL لدرعا! [1]
+                return `Governorate = '${escaped}'`;
+            }).join(" OR ");
+            sql.push(`(${govConditions})`);
         }
         
-        if (checkedCats.length > 0) {
-            const formattedCats = checkedCats.map(c => `'${c}'`).join(",");
-            sql.push(`Category IN (${formattedCats})`);
-        } else {
-            sql.push("1=0"); // إذا تم إلغاء الخطورة بالكامل، لا يعرض شيئاً
+        if (checkedCats.length < document.querySelectorAll(".cat-checkbox").length) {
+            const catConditions = checkedCats.map(c => {
+                const escaped = c.replace(/'/g, "''");
+                return `Category = '${escaped}'`; // مطابقة دقيقة للقيم الموحدة المصفاة [3]
+            }).join(" OR ");
+            sql.push(`(${catConditions})`);
         }
 
         const finalExpr = sql.length > 0 ? sql.join(" AND ") : null;
@@ -373,11 +429,12 @@ require([
 
         // 2. تحديث جدول الإحصائيات حياً للمخيمات المعروضة فقط [3]
         const filteredFeatures = loadedPopulatedFeatures.filter(f => {
-            const featureGov = f.attributes.Governorate;
-            const featureCat = f.attributes.Category ? f.attributes.Category.toLowerCase() : "";
+            const props = f.attributes || f.properties;
+            const featureGov = props.Governorate;
+            const featureCat = props.Category ? props.Category : "Low";
             
             const matchGov = checkedGovs.includes(featureGov);
-            const matchCat = checkedCats.some(c => c.toLowerCase() === featureCat);
+            const matchCat = checkedCats.includes(featureCat);
             
             return matchGov && matchCat;
         });
@@ -500,7 +557,7 @@ require([
             applyCrossFilters();
         });
 
-        // 🚨 تفعيل البحث الفوري المباشر للمحافظات جغرافياً! (بمجرد الكتابة يتم تصفية الأسماء تفاعلياً) [3]
+        // 🚨 تفعيل البحث الفوري المباشر للمحافظات جغرافياً!
         document.getElementById("gov-search").addEventListener("input", function(e) {
             const searchText = e.target.value.toLowerCase();
             document.querySelectorAll("#gov-list li").forEach(li => {
@@ -513,7 +570,7 @@ require([
             });
         });
 
-        // 🚨 تفعيل البحث الفوري لمستويات الخطورة! [3]
+        // 🚨 تفعيل البحث الفوري لمستويات الخطورة!
         document.getElementById("cat-search").addEventListener("input", function(e) {
             const searchText = e.target.value.toLowerCase();
             document.querySelectorAll("#cat-list li").forEach(li => {
